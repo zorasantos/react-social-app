@@ -16,29 +16,29 @@ var firebaseConfig = {
   
 
 const firebase = require('firebase')
-// Initialize Firebase
 firebase.initializeApp(firebaseConfig)
+
+const db = admin.firestore()
 
 
 app.get('/screams', (req, res) => {
-    admin
-        .firestore()
-        .collection('screams')
-        .orderBy('createdAt', 'desc')
-        .get()
-        .then(data => {
-            let screams = []
-            data.forEach(doc => {
-                screams.push({
-                    screamId: doc.id,
-                    body: doc.data().body,
-                    userHandle: doc.data().userHandle,
-                    createdAt: doc.data().createdAt
-                })
+    db
+    .collection('screams')
+    .orderBy('createdAt', 'desc')
+    .get()
+    .then(data => {
+        let screams = []
+        data.forEach(doc => {
+            screams.push({
+                screamId: doc.id,
+                body: doc.data().body,
+                userHandle: doc.data().userHandle,
+                createdAt: doc.data().createdAt
             })
-            return res.json(screams)
         })
-        .catch((err) => console.error(err))
+        return res.json(screams)
+    })
+    .catch((err) => console.error(err))
 })
 app.post('/screams', (req, res) => {
     const newScream = {
@@ -47,7 +47,7 @@ app.post('/screams', (req, res) => {
         createdAt: new Date().toISOString()
     }
 
-    admin.firestore()
+        db
         .collection('screams')
         .add(newScream)
         .then(doc => {
@@ -67,18 +67,30 @@ app.post('/signup', (req, res) => {
         handle: req.body.handle
     }
     //TODO: validate data
-    firebase
-        .auth()
-        .createUserWithEmailAndPassword(newUser.email, newUser.password)
-        .then((data) => {
-            return res
-                .status(201)
-                .json({ message: `Usuario ${data.user.uid} criado com sucesso!`  })
-        })
-        .catch((err) => {
-            console.error(err)
-            return res.status(500).json({ error: err.code })
-        })
+    db.doc(`/users/${newUser.handle}`).get()
+      .then( doc => {
+          if(doc.exists) {
+              return res.status(400).json({ handle: 'Este nickname ja existe!' })
+          } else {
+            return firebase
+            .auth()
+            .createUserWithEmailAndPassword(newUser.email, newUser.password)          
+          }
+      })
+      .then(data => {
+          return data.user.getIdToken()
+      })
+      .then((token) => {
+          return res.status(201).json({ token })
+      })
+      .catch((err) => {
+          console.error(err)
+          if (err.code === 'auth/email-already-in-use') {
+              return res.status(400).json({ email: 'Email ja cadastrado!' })
+          } else {
+              return res.status(500).json({ error: err.code })
+          }
+      })
 })
 
 exports.api = functions.region('europe-west1').https.onRequest(app)
