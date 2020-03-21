@@ -1,7 +1,7 @@
 const functions = require('firebase-functions')
 const admin = require('firebase-admin')
-
 const app = require('express')()
+
 admin.initializeApp()
 
 var firebaseConfig = {
@@ -26,21 +26,29 @@ app.get('/screams', (req, res) => {
     .collection('screams')
     .orderBy('createdAt', 'desc')
     .get()
-    .then(data => {
+    .then((data) => {
         let screams = []
-        data.forEach(doc => {
+        data.forEach((doc) => {
             screams.push({
                 screamId: doc.id,
                 body: doc.data().body,
                 userHandle: doc.data().userHandle,
-                createdAt: doc.data().createdAt
+                createdAt: doc.data().createdAt,
+                commentCount: doc.data().commentCount,
+                likeCount: doc.data().likeCount
             })
         })
         return res.json(screams)
     })
-    .catch((err) => console.error(err))
+    .catch((err) => {
+        console.error(err)
+        res.status(500).json({ error: err.code })
+    })
 })
-app.post('/screams', (req, res) => {
+app.post('/scream', (req, res) => {
+    if (req.body.body.trim() === '') {
+        return res.status(400).json({ body: 'Esse campo não pode estar vazio!' })
+    }
     const newScream = {
         body: req.body.body,
         userHandle: req.body.userHandle,
@@ -50,7 +58,7 @@ app.post('/screams', (req, res) => {
         db
         .collection('screams')
         .add(newScream)
-        .then(doc => {
+        .then((doc) => {
             res.json({ message: `Documento ${doc.id} criado com sucesso!` })
         })
         .catch(err => {
@@ -67,7 +75,9 @@ app.post('/signup', (req, res) => {
         handle: req.body.handle
     }
     //TODO: validate data
-    db.doc(`/users/${newUser.handle}`).get()
+    let token, userId;
+    db.doc(`/users/${newUser.handle}`)
+      .get()
       .then( doc => {
           if(doc.exists) {
               return res.status(400).json({ handle: 'Este nickname ja existe!' })
@@ -77,10 +87,21 @@ app.post('/signup', (req, res) => {
             .createUserWithEmailAndPassword(newUser.email, newUser.password)          
           }
       })
-      .then(data => {
+      .then((data) => {
+          userId = data.user.uid
           return data.user.getIdToken()
       })
-      .then((token) => {
+      .then((idToken) => {
+          token = idToken
+          const userCredentials = {
+              handle: newUser.handle,
+              email: newUser.email,
+              createdAt: new Date().toISOString(),
+              userId
+          }
+          return db.doc(`/users/${newUser.handle}`).set(userCredentials)
+      })
+      .then(() => {
           return res.status(201).json({ token })
       })
       .catch((err) => {
